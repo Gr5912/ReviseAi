@@ -1,53 +1,61 @@
 document.getElementById('submit-prompt').addEventListener('click', async () => {
     const prompt = document.getElementById('prompt').value;
-    const fileInput = document.getElementById('file-upload');
     const responseOutput = document.getElementById('response-output');
-    const file = fileInput.files[0];
 
-    if (!prompt && !file) {
-        responseOutput.innerHTML = '<p>Please enter a prompt or upload a file.</p>';
+    if (!prompt) {
+        responseOutput.innerHTML = '<p>Please enter a prompt.</p>';
         return;
     }
 
     responseOutput.innerHTML = '<p>Loading...</p>';
 
-    const formData = new FormData();
-    if (prompt) {
-        formData.append('prompt', prompt);
-    }
-    if (file) {
-        formData.append('file', file);
-    }
-
     try {
         const response = await fetch('/api/gemini', {
             method: 'POST',
-            body: formData,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ prompt: prompt })
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            responseOutput.innerHTML = `<p>Error: ${errorData.error}</p>`;
+            // Improved error handling
+            let errorMessage = `Error: ${response.status} ${response.statusText}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.error) {
+                    errorMessage += `<br>${errorData.error}`;
+                }
+            } catch (e) {
+                // If JSON parsing fails, fall back to text
+                const errorText = await response.text();
+                errorMessage += `<br>${errorText}`;
+            }
+            responseOutput.innerHTML = `<p>${errorMessage}</p>`;
             return;
         }
 
         const data = await response.json();
-        const markdownText = data.response;
-        const html = marked.parse(markdownText);
+        if (data && data.response) {
+            const markdownText = data.response;
+            const html = marked.parse(markdownText);
+            responseOutput.innerHTML = html;
 
-        responseOutput.innerHTML = html;
-
-        // Tell MathJax to process the new content
-        if (window.MathJax) {
-            MathJax.typesetPromise([responseOutput])
-                .catch(function (err) {
-                    console.log(err.message);
-                });
+            // Process MathJax if available
+            if (window.MathJax) {
+                MathJax.typesetPromise([responseOutput])
+                    .catch(function (err) {
+                        console.error("MathJax typesetting error:", err);
+                    });
+            } else {
+                console.warn("MathJax not loaded");
+            }
         } else {
-            console.log("MathJax not loaded");
+            responseOutput.innerHTML = "<p>No response received from the server.</p>";
         }
 
     } catch (error) {
         responseOutput.innerHTML = `<p>Error: ${error.message}</p>`;
+        console.error("Fetch error:", error); // Log the error for debugging
     }
 });
